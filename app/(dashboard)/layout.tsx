@@ -16,29 +16,37 @@ import {
 import { useAuth } from "@/app/lib/context/auth-context";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  const { user, signOut, loading } = useAuth();
+  const { user, signOut, loading, isEmailVerified } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login");
     }
-  }, [user, loading, router]);
+    
+    // Check if user is authenticated but email is not verified
+    if (!loading && user && !isEmailVerified) {
+      router.push("/auth/verify-email");
+    }
+  }, [user, loading, isEmailVerified, router]);
 
   const handleSignOut = async () => {
     await signOut();
-    router.push("/login");
+    // signOut already handles navigation
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-slate-50">
-        <p>Loading user session...</p>
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p>Loading user session...</p>
+        </div>
       </div>
     );
   }
 
-  if (!user) {
+  if (!user || !isEmailVerified) {
     return null;
   }
 

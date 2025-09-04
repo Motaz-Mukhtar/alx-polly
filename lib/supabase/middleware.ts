@@ -27,19 +27,50 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  // Get both user and session data for comprehensive validation
+  const [userResponse, sessionResponse] = await Promise.all([
+    supabase.auth.getUser(),
+    supabase.auth.getSession()
+  ])
 
-  if (
-    !user &&
-    !request.nextUrl.pathname.startsWith('/login') &&
-    !request.nextUrl.pathname.startsWith('/auth')
-  ) {
-    // no user, potentially respond by redirecting the user to the login page
+  const user = userResponse.data.user
+  const session = sessionResponse.data.session
+
+  // Check if user exists and session is valid
+  if (!user || !session) {
+    // No user or invalid session, redirect to login
+    if (!request.nextUrl.pathname.startsWith('/login') && 
+        !request.nextUrl.pathname.startsWith('/auth') &&
+        !request.nextUrl.pathname.startsWith('/register')) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+    return supabaseResponse
+  }
+
+  // Check if session is expired
+  if (session.expires_at && new Date(session.expires_at * 1000) < new Date()) {
+    // Session expired, clear cookies and redirect to login
+    supabaseResponse.cookies.delete('sb-access-token')
+    supabaseResponse.cookies.delete('sb-refresh-token')
+    
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
+  }
+
+  // Check if user email is verified (only for protected routes)
+  if (!request.nextUrl.pathname.startsWith('/login') && 
+      !request.nextUrl.pathname.startsWith('/auth') &&
+      !request.nextUrl.pathname.startsWith('/register')) {
+    
+    if (!user.email_confirmed_at) {
+      // Email not verified, redirect to verification page
+      const url = request.nextUrl.clone()
+      url.pathname = '/auth/verify-email'
+      return NextResponse.redirect(url)
+    }
   }
 
   return supabaseResponse

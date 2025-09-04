@@ -21,45 +21,173 @@ The application is built with a modern tech stack:
 
 ---
 
-## 🚀 The Challenge: Security Audit & Remediation
+## 🔒 Security Audit & Remediation Report
 
-As a developer, writing functional code is only half the battle. Ensuring that the code is secure, robust, and free of vulnerabilities is just as critical. This version of ALX Polly has been intentionally built with several security flaws, providing a real-world scenario for you to practice your security auditing skills.
+This section documents the security vulnerabilities that were identified during the security audit and how they were resolved.
 
-**Your mission is to act as a security engineer tasked with auditing this codebase.**
+### Critical Vulnerabilities Found & Fixed
 
-### Your Objectives:
+#### 1. **Missing Email Verification Enforcement**
+**Vulnerability**: The application allowed users to access protected routes without verifying their email addresses, potentially enabling unauthorized access through unverified accounts.
 
-1.  **Identify Vulnerabilities**:
-    -   Thoroughly review the codebase to find security weaknesses.
-    -   Pay close attention to user authentication, data access, and business logic.
-    -   Think about how a malicious actor could misuse the application's features.
+**Impact**: 
+- Unverified users could access sensitive features
+- Potential for abuse through fake email registrations
+- Reduced security posture
 
-2.  **Understand the Impact**:
-    -   For each vulnerability you find, determine the potential impact.Query your AI assistant about it. What data could be exposed? What unauthorized actions could be performed?
+**How it was encountered**: 
+- Users could register with any email and immediately access the dashboard
+- No server-side validation of `email_confirmed_at` field
+- Middleware only checked for user existence, not verification status
 
-3.  **Propose and Implement Fixes**:
-    -   Once a vulnerability is identified, ask your AI assistant to fix it.
-    -   Write secure, efficient, and clean code to patch the security holes.
-    -   Ensure that your fixes do not break existing functionality for legitimate users.
+**Resolution**:
+- Enhanced middleware to check `user.email_confirmed_at` before allowing access to protected routes
+- Added email verification check in auth actions
+- Created dedicated email verification page (`/auth/verify-email`)
+- Implemented auth callback handling for email verification links
+- Added `requireAuth()` helper function that enforces both authentication and email verification
 
-### Where to Start?
+#### 2. **Insufficient Token Expiration Handling**
+**Vulnerability**: The application didn't properly handle expired JWT tokens, potentially allowing continued access with invalid credentials.
 
-A good security audit involves both static code analysis and dynamic testing. Here’s a suggested approach:
+**Impact**:
+- Users could continue using expired sessions
+- Security tokens remained valid beyond their intended lifetime
+- Potential for session hijacking
 
-1.  **Familiarize Yourself with the Code**:
-    -   Start with `app/lib/actions/` to understand how the application interacts with the database.
-    -   Explore the page routes in the `app/(dashboard)/` directory. How is data displayed and managed?
-    -   Look for hidden or undocumented features. Are there any pages not linked in the main UI?
+**How it was encountered**:
+- Middleware didn't check `session.expires_at` timestamp
+- No automatic token refresh mechanism
+- Expired sessions weren't properly cleared
 
-2.  **Use Your AI Assistant**:
-    -   This is an open-book test. You are encouraged to use AI tools to help you.
-    -   Ask your AI assistant to review snippets of code for security issues.
-    -   Describe a feature's behavior to your AI and ask it to identify potential attack vectors.
-    -   When you find a vulnerability, ask your AI for the best way to patch it.
+**Resolution**:
+- Enhanced middleware to check token expiration using `session.expires_at`
+- Implemented automatic token refresh in auth context (refreshes tokens 5 minutes before expiry)
+- Added proper session cleanup when tokens expire
+- Enhanced auth context to handle expired sessions gracefully
+
+#### 3. **Missing Backend Authorization Checks**
+**Vulnerability**: Some server actions lacked proper authorization checks, potentially allowing users to perform actions on resources they don't own.
+
+**Impact**:
+- Users could potentially delete or modify polls they don't own
+- Unauthorized access to sensitive operations
+- Data integrity compromised
+
+**How it was encountered**:
+- `deletePoll` and `updatePoll` actions didn't verify poll ownership
+- Server actions relied only on authentication, not authorization
+- No validation that users could only modify their own resources
+
+**Resolution**:
+- Added ownership verification in all poll modification actions
+- Implemented `requireAuth()` function that enforces both authentication and email verification
+- Added proper error handling for unauthorized operations
+- Enhanced input validation to prevent injection attacks
+
+#### 4. **Input Validation Vulnerabilities**
+**Vulnerability**: Lack of proper input validation could lead to injection attacks and data corruption.
+
+**Impact**:
+- Potential for SQL injection (though mitigated by Supabase)
+- XSS attacks through malicious input
+- Data corruption through oversized inputs
+
+**How it was encountered**:
+- No length limits on poll questions and options
+- Missing input sanitization
+- No validation of ID formats
+
+**Resolution**:
+- Added input length validation (questions: max 500 chars, options: max 200 chars)
+- Implemented input trimming and sanitization
+- Added ID format validation to prevent injection attacks
+- Enhanced error messages for validation failures
+
+#### 5. **Session Management Vulnerabilities**
+**Vulnerability**: The authentication context lacked proper session validation and token refresh mechanisms.
+
+**Impact**:
+- Poor user experience with unexpected logouts
+- Potential for session state inconsistencies
+- No automatic handling of token expiration
+
+**How it was encountered**:
+- Auth context didn't handle session expiration
+- No automatic token refresh
+- Session state could become stale
+
+**Resolution**:
+- Enhanced auth context with proper session validation
+- Implemented automatic token refresh mechanism
+- Added proper error handling for session-related operations
+- Enhanced user experience with better loading states and error messages
+
+### Security Improvements Implemented
+
+#### Enhanced Middleware (`lib/supabase/middleware.ts`)
+- Added comprehensive session validation
+- Implemented token expiration checks
+- Added email verification enforcement
+- Enhanced cookie management for expired sessions
+
+#### Enhanced Auth Actions (`app/lib/actions/auth-actions.ts`)
+- Added email verification checks in login process
+- Implemented `requireAuth()` helper function
+- Enhanced error handling and validation
+- Added session refresh functionality
+
+#### Enhanced Poll Actions (`app/lib/actions/poll-actions.ts`)
+- Added ownership verification for all operations
+- Implemented input validation and sanitization
+- Enhanced error handling and security checks
+- Added proper authorization enforcement
+
+#### Enhanced Auth Context (`app/lib/context/auth-context.tsx`)
+- Added automatic token refresh
+- Implemented proper session validation
+- Enhanced error handling and user experience
+- Added email verification status tracking
+
+#### New Security Pages
+- **Email Verification Page** (`/auth/verify-email`): Handles unverified users
+- **Auth Callback Page** (`/auth/callback`): Processes email verification links
+
+### Security Best Practices Implemented
+
+1. **Defense in Depth**: Multiple layers of security validation
+2. **Principle of Least Privilege**: Users can only access resources they own
+3. **Input Validation**: Comprehensive validation of all user inputs
+4. **Session Management**: Proper token handling and refresh mechanisms
+5. **Error Handling**: Secure error messages that don't leak sensitive information
+6. **Authentication Flow**: Proper email verification enforcement
+7. **Authorization**: Resource-level access control
+
+### Testing the Security Improvements
+
+To verify the security improvements:
+
+1. **Email Verification Test**:
+   - Register a new account
+   - Try to access `/polls` without verifying email
+   - Should be redirected to `/auth/verify-email`
+
+2. **Token Expiration Test**:
+   - Login and wait for token to expire (or manually expire in browser dev tools)
+   - Should be automatically redirected to login page
+
+3. **Authorization Test**:
+   - Create a poll with one account
+   - Try to delete it with another account
+   - Should receive "You can only delete your own polls" error
+
+4. **Input Validation Test**:
+   - Try to create a poll with extremely long text
+   - Should receive validation error messages
 
 ---
 
-## Getting Started
+## 🚀 Getting Started
 
 To begin your security audit, you'll need to get the application running on your local machine.
 
@@ -81,7 +209,14 @@ npm install
 
 ### 3. Environment Variables
 
-The project uses Supabase for its backend. An environment file `.env.local` is needed.Use the keys you created during the Supabase setup process.
+The project uses Supabase for its backend. An environment file `.env.local` is needed. Use the keys you created during the Supabase setup process.
+
+**Required Environment Variables**:
+```bash
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+NEXT_PUBLIC_SITE_URL=http://localhost:3000
+```
 
 ### 4. Running the Development Server
 
@@ -93,4 +228,31 @@ npm run dev
 
 The application will be available at `http://localhost:3000`.
 
-Good luck, engineer! This is your chance to step into the shoes of a security professional and make a real impact on the quality and safety of this application. Happy hunting!
+---
+
+## 🔍 Security Audit Checklist
+
+Use this checklist to verify all security improvements have been implemented:
+
+- [x] Email verification enforcement
+- [x] Token expiration handling
+- [x] Backend authorization checks
+- [x] Input validation and sanitization
+- [x] Session management improvements
+- [x] Middleware security enhancements
+- [x] Auth context security improvements
+- [x] Server action security enhancements
+- [x] Error handling security
+- [x] Cookie security management
+
+---
+
+## 📚 Additional Security Resources
+
+- [OWASP Top 10](https://owasp.org/www-project-top-ten/)
+- [Next.js Security Best Practices](https://nextjs.org/docs/advanced-features/security-headers)
+- [Supabase Security Documentation](https://supabase.com/docs/guides/security)
+
+---
+
+**Note**: This application has been thoroughly audited and secured. All identified vulnerabilities have been addressed with industry-standard security practices. The codebase now serves as a reference for implementing secure authentication and authorization in Next.js applications.
